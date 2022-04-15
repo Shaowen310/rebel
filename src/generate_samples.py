@@ -36,7 +36,7 @@ class GenerateTextSamplesCallback(Callback):  # pragma: no cover
         # pl_module.logger.info("Executing translation callback")
         if (trainer.batch_idx + 1) % self.logging_batch_interval != 0:  # type: ignore[attr-defined]
             return
-        labels = batch.pop("labels")
+        labels = batch["labels"].cpu()
         gen_kwargs = {
             "max_length": pl_module.hparams.val_max_target_length
             if pl_module.hparams.val_max_target_length is not None

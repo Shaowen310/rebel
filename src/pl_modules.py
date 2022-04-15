@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 import torch
 import numpy as np
 import pandas as pd
+import omegaconf
 from score import score, re_score
 from transformers import AutoConfig, AutoModelForSeq2SeqLM, AutoTokenizer
 from transformers.optimization import (
@@ -89,7 +90,7 @@ relations_nyt = {'/people/person/nationality': 'country of citizenship', '/sport
 
 class BasePLModule(pl.LightningModule):
 
-    def __init__(self, conf, config: AutoConfig, tokenizer: AutoTokenizer, model: AutoModelForSeq2SeqLM, *args, **kwargs) -> None:
+    def __init__(self, conf: omegaconf.DictConfig, config: AutoConfig, tokenizer: AutoTokenizer, model: AutoModelForSeq2SeqLM, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters(conf)
         self.tokenizer = tokenizer
@@ -140,7 +141,7 @@ class BasePLModule(pl.LightningModule):
         return output_dict
 
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
-        labels = batch.pop("labels")
+        labels = batch["labels"]
         batch["decoder_input_ids"] = torch.where(labels != -100, labels, self.config.pad_token_id)
         labels = shift_tokens_left(labels, -100)
         forward_output = self.forward(batch, labels)
@@ -203,7 +204,7 @@ class BasePLModule(pl.LightningModule):
         batch,
         labels,
     ) -> None:
-        # labels = batch.pop("labels")
+        # labels = batch["labels"]
         # pick the last batch and logits
         # x, y = batch
         gen_kwargs = {
@@ -284,7 +285,7 @@ class BasePLModule(pl.LightningModule):
             if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
                 generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
 
-        labels = batch.pop("labels")
+        labels = batch["labels"]
         batch["decoder_input_ids"] = torch.where(labels != -100, labels, self.config.pad_token_id)
         labels = shift_tokens_left(labels, -100)
         with torch.no_grad():
@@ -337,7 +338,7 @@ class BasePLModule(pl.LightningModule):
             if generated_tokens.shape[-1] < gen_kwargs["max_length"]:
                 generated_tokens = self._pad_tensors_to_max_len(generated_tokens, gen_kwargs["max_length"])
 
-        labels = batch.pop("labels")
+        labels = batch["labels"]
         batch["decoder_input_ids"] = torch.where(labels != -100, labels, self.config.pad_token_id)
         labels = shift_tokens_left(labels, -100)
         with torch.no_grad():
