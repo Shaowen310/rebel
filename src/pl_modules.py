@@ -441,7 +441,7 @@ class BasePLModule(pl.LightningModule):
                 for id_, row in enumerate(d_test):
                     keys.append(' '.join(row['tokens']))
             with open('preds.jsonl','a') as f:
-                self.log('preds.jsonl', os.path.realpath(f.name))
+                self.log('preds.jsonl', os.sep.join(os.path.realpath(f.name).split(os.sep)[-3:]))
                 for key, prd, label in zip(keys, preds, gold):
                     f.write(f'{key} \t {self._pprels(prd)} \t {self._pprels(label)}\n')
 
