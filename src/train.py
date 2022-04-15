@@ -1,3 +1,5 @@
+import os
+
 import omegaconf
 import hydra
 
@@ -14,7 +16,7 @@ from pytorch_lightning.loggers.wandb import WandbLogger
 from pytorch_lightning.callbacks import LearningRateMonitor
 from generate_samples import GenerateTextSamplesCallback
 
-relations = {'no_relation': 'no relation',
+RELATIONS = {'no_relation': 'no relation',
 'org:alternate_names': 'alternate name',
 'org:city_of_branch': 'city of headquarters',
 'org:country_of_branch': 'country of headquarters',
@@ -55,6 +57,12 @@ relations = {'no_relation': 'no relation',
 'per:stateorprovinces_of_residence': 'state of residence',
 'per:title': 'title'}
 
+def is_relative_path(path):
+    return isinstance(path, str) and path.startswith('.')
+
+def relative_to_absolute_path(project_root, relative_path):
+    return os.path.join(project_root, relative_path[2:])
+
 def train(conf: omegaconf.DictConfig) -> None:
     pl.seed_everything(conf.seed)
     
@@ -68,8 +76,8 @@ def train(conf: omegaconf.DictConfig) -> None:
     
     tokenizer_kwargs = {
         "use_fast": conf.use_fast_tokenizer,
-        "additional_special_tokens": ['<obj>', '<subj>', '<triplet>', '<head>', '</head>', '<tail>', '</tail>'], # Here the tokens for head and tail are legacy and only needed if finetuning over the public REBEL checkpoint, but are not used. If training from scratch, remove this line and uncomment the next one.
-#         "additional_special_tokens": ['<obj>', '<subj>', '<triplet>'],
+        # "additional_special_tokens": ['<obj>', '<subj>', '<triplet>', '<head>', '</head>', '<tail>', '</tail>'], # Here the tokens for head and tail are legacy and only needed if finetuning over the public REBEL checkpoint, but are not used. If training from scratch, remove this line and uncomment the next one.
+        "additional_special_tokens": ['<obj>', '<subj>', '<triplet>'],
     }
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -142,8 +150,20 @@ def train(conf: omegaconf.DictConfig) -> None:
     # module fit
     trainer.fit(pl_module, datamodule=pl_data_module)
 
-@hydra.main(config_path='../conf', config_name='root')
+    if conf.do_predict:
+        trainer.test(pl_module, test_dataloaders=pl_data_module.test_dataloader())
+
+@hydra.main(config_path='../conf', config_name='nyt')
 def main(conf: omegaconf.DictConfig):
+    project_root = os.getenv('REBEL_DIR')
+    if is_relative_path(conf.dataset_name):
+        conf.dataset_name = relative_to_absolute_path(project_root, conf.dataset_name)
+    if is_relative_path(conf.train_file):
+        conf.train_file = relative_to_absolute_path(project_root, conf.train_file)
+    if is_relative_path(conf.validation_file):
+        conf.validation_file = relative_to_absolute_path(project_root, conf.validation_file)
+    if is_relative_path(conf.test_file):
+        conf.test_file = relative_to_absolute_path(project_root, conf.test_file)
     train(conf)
 
 

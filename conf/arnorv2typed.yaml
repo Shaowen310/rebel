@@ -1,0 +1,4 @@
+defaults:
+  - train: nyt_train
+  - model: default_model
+  - data: arnorv2typed_data

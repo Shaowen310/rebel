@@ -59,29 +59,28 @@ def train(conf: omegaconf.DictConfig) -> None:
 
     config = AutoConfig.from_pretrained(
         conf.config_name if conf.config_name else conf.model_name_or_path,
-        decoder_start_token_id = 0,
-        early_stopping = False,
-        no_repeat_ngram_size = 0,
+        decoder_start_token_id=0,
+        early_stopping=False,
+        no_repeat_ngram_size=0,
         # cache_dir=conf.cache_dir,
         # revision=conf.model_revision,
         # use_auth_token=True if conf.use_auth_token else None,
     )
-    
+
     tokenizer_kwargs = {
         "use_fast": conf.use_fast_tokenizer,
         "additional_special_tokens": ['<obj>', '<subj>', '<triplet>'],
     }
 
     tokenizer = AutoTokenizer.from_pretrained(
-        conf.tokenizer_name if conf.tokenizer_name else conf.model_name_or_path,
-        **tokenizer_kwargs
-    )
+        conf.tokenizer_name if conf.tokenizer_name else conf.model_name_or_path, **tokenizer_kwargs)
     if conf.dataset_name.split('/')[-1] == 'conll04_typed.py':
-        tokenizer.add_tokens(['<peop>', '<org>', '<other>', '<loc>'], special_tokens = True)
+        tokenizer.add_tokens(['<peop>', '<org>', '<other>', '<loc>'], special_tokens=True)
     if conf.dataset_name.split('/')[-1] == 'nyt_typed.py':
-        tokenizer.add_tokens(['<loc>', '<org>', '<per>'], special_tokens = True)
+        tokenizer.add_tokens(['<loc>', '<org>', '<per>'], special_tokens=True)
     if conf.dataset_name.split('/')[-1] == 'docred_typed.py':
-        tokenizer.add_tokens(['<loc>', '<misc>', '<per>', '<num>', '<time>', '<org>'], special_tokens = True)
+        tokenizer.add_tokens(['<loc>', '<misc>', '<per>', '<num>', '<time>', '<org>'],
+                             special_tokens=True)
 
     model = AutoModelForSeq2SeqLM.from_pretrained(
         conf.model_name_or_path,
