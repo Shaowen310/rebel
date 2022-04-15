@@ -153,6 +153,14 @@ def train(conf: omegaconf.DictConfig) -> None:
     if conf.do_predict:
         trainer.test(pl_module, test_dataloaders=pl_data_module.test_dataloader())
 
+    # save model
+    if 'model_save_name' in conf:
+        project_root = os.getenv('REBEL_DIR')
+        model_save_dir = os.path.join(project_root, f'model/{conf.model_save_name}')
+
+        pl_module.model.save_pretrained(model_save_dir)
+        pl_module.tokenizer.save_pretrained(model_save_dir)
+
 @hydra.main(config_path='../conf', config_name='nyt')
 def main(conf: omegaconf.DictConfig):
     project_root = os.getenv('REBEL_DIR')

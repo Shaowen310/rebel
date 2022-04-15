@@ -2,3 +2,5 @@ defaults:
   - train: nyt_train
   - model: default_model
   - data: nyt_data
+
+model_save_name: nyt
