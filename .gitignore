@@ -1,0 +1,7 @@
+*.pyc
+*.lock
+.ipynb_checkpoints
+
+outputs
+src/outputs
+model
