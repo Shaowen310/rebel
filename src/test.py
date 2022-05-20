@@ -1,3 +1,4 @@
+import os
 import omegaconf
 import hydra
 
@@ -53,6 +54,12 @@ relations = {'no_relation': 'no relation',
 'per:stateorprovinces_of_residence': 'state of residence',
 'per:title': 'title'}
 
+def is_relative_path(path):
+    return isinstance(path, str) and path.startswith('.')
+
+def relative_to_absolute_path(project_root, relative_path):
+    return os.path.join(project_root, relative_path[2:])
+
 
 def train(conf: omegaconf.DictConfig) -> None:
     pl.seed_everything(conf.seed)
@@ -94,12 +101,17 @@ def train(conf: omegaconf.DictConfig) -> None:
 
     # main module declaration
     pl_module = BasePLModule(conf, config, tokenizer, model)
-    pl_module = pl_module.load_from_checkpoint(checkpoint_path = conf.checkpoint_path, config = config, tokenizer = tokenizer, model = model)
+    project_root = os.getenv('REBEL_DIR')
+    model_save_dir = os.path.join(project_root, f'model/{conf.model_save_name}')
+    pl_module.model.from_pretrained(model_save_dir)
+    pl_module.tokenizer.from_pretrained(model_save_dir)
+
     # pl_module.hparams.predict_with_generate = True
-    pl_module.hparams.test_file = pl_data_module.conf.test_file
+
     # trainer
     trainer = pl.Trainer(
         gpus=conf.gpus,
+        logger=False,
     )
     # Manually run prep methods on DataModule
     pl_data_module.prepare_data()
@@ -108,8 +120,17 @@ def train(conf: omegaconf.DictConfig) -> None:
     trainer.test(pl_module, test_dataloaders=pl_data_module.test_dataloader())
 
 
-@hydra.main(config_path='../conf', config_name='root')
+@hydra.main(config_path='../conf', config_name='nyt')
 def main(conf: omegaconf.DictConfig):
+    project_root = os.getenv('REBEL_DIR')
+    if is_relative_path(conf.dataset_name):
+        conf.dataset_name = relative_to_absolute_path(project_root, conf.dataset_name)
+    if is_relative_path(conf.train_file):
+        conf.train_file = relative_to_absolute_path(project_root, conf.train_file)
+    if is_relative_path(conf.validation_file):
+        conf.validation_file = relative_to_absolute_path(project_root, conf.validation_file)
+    if is_relative_path(conf.test_file):
+        conf.test_file = relative_to_absolute_path(project_root, conf.test_file)
     train(conf)
 
 
