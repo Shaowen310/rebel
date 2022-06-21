@@ -1,0 +1,6 @@
+defaults:
+  - train: carbdebug_train
+  - model: default_model
+  - data: carbdebug_data
+
+model_save_name: carbdebug

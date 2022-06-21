@@ -1,12 +1,12 @@
 # @package _global_
 
 num_workers: 1
-dataset_name: './datasets/nyt_typed.py'
+dataset_name: './datasets/carb.py'
 text_column: 'context'
 target_column: 'triplets'
-train_file: './data/nytdebug/train.json'
-validation_file: './data/nytdebug/dev.json'
-test_file: './data/nytdebug/test.json'
+train_file: './data/carbdebug/train.tsv'
+validation_file: './data/carbdebug/dev.tsv'
+test_file: './data/carbdebug/test.tsv'
 overwrite_cache: False
 preprocessing_num_workers: 
 max_source_length: 1024
@@ -20,4 +20,4 @@ num_beams:
 eval_beams: 3
 ignore_pad_token_for_loss: True
 source_prefix: 
-relations_file: 
+relations_file:

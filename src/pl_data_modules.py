@@ -62,7 +62,7 @@ class BasePLDataModule(pl.LightningDataModule):
         self.conf = conf
         self.tokenizer = tokenizer
         self.model = model
-        if conf.relations_file:
+        if hasattr(conf, 'relations_file') and conf.relations_file:
             self.datasets = load_dataset(conf.dataset_name, data_files={'train': conf.train_file, 'dev': conf.validation_file, 'test': conf.test_file, 'relations': conf.relations_file})
         else:
             self.datasets = load_dataset(conf.dataset_name, data_files={'train': conf.train_file, 'dev': conf.validation_file, 'test': conf.test_file})
@@ -167,7 +167,6 @@ class BasePLDataModule(pl.LightningDataModule):
     #     raise NotImplementedError
 
     def preprocess_function(self, examples):
-
         inputs = examples[self.text_column]
         targets = examples[self.summary_column]
         inputs = [self.prefix + inp for inp in inputs]

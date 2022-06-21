@@ -5,6 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: train.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${fileDirname}",
+            "env": {
+                "REBEL_DIR": "/data/shaowen/projects/re/rebel"
+            }
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",

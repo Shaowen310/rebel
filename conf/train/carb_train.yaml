@@ -1,8 +1,8 @@
 # @package _global_
 
 # optimization
-train_batch_size: 4
-eval_batch_size: 4
+train_batch_size: 24
+eval_batch_size: 16
 gradient_acc_steps: 1
 gradient_clip_value: 10.0
 max_steps: 100000
@@ -45,7 +45,7 @@ adam_beta2: 0.999
 adam_epsilon: 0.00000001
 max_grad_norm: 1.0
 
-num_train_epochs: 5.0
+num_train_epochs: 7.0
 
 seed: 42
 
