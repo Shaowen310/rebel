@@ -1,3 +1,4 @@
+import csv
 import os
 from typing import Any
 import nltk
@@ -7,6 +8,7 @@ import torch
 import numpy as np
 import pandas as pd
 import omegaconf
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from score import score, re_score
 from transformers import AutoConfig, AutoModelForSeq2SeqLM, AutoTokenizer
 from transformers.optimization import (
@@ -22,7 +24,7 @@ from transformers.optimization import (
 from scheduler import get_inverse_square_root_schedule_with_warmup
 from datasets import load_dataset, load_metric
 from torch.nn.utils.rnn import pad_sequence
-from utils import BartTripletHead, shift_tokens_left, extract_triplets_typed, extract_triplets
+from utils import BartTripletHead, extract_open_triplets, shift_tokens_left, extract_triplets_typed, extract_triplets
 
 arg_to_scheduler = {
     "linear": get_linear_schedule_with_warmup,
@@ -170,7 +172,6 @@ class BasePLModule(pl.LightningModule):
         batch,
         labels,
     ) -> None:
-
         gen_kwargs = {
             "max_length": self.hparams.val_max_target_length
             if self.hparams.val_max_target_length is not None
@@ -195,7 +196,13 @@ class BasePLModule(pl.LightningModule):
         elif self.hparams.dataset_name.split('/')[-1] == 'nyt_typed.py':
             return [extract_triplets_typed(rel, {'<loc>': 'LOCATION', '<org>': 'ORGANIZATION', '<per>': 'PERSON'}) for rel in decoded_preds], [extract_triplets_typed(rel, {'<loc>': 'LOCATION', '<org>': 'ORGANIZATION', '<per>': 'PERSON'}) for rel in decoded_labels]
         elif self.hparams.dataset_name.split('/')[-1] == 'docred_typed.py':
-            return [extract_triplets_typed(rel, {'<loc>': 'LOC', '<misc>': 'MISC', '<per>': 'PER', '<num>': 'NUM', '<time>': 'TIME', '<org>': 'ORG'}) for rel in decoded_preds], [extract_triplets_typed(rel, {'<loc>': 'LOC', '<misc>': 'MISC', '<per>': 'PER', '<num>': 'NUM', '<time>': 'TIME', '<org>': 'ORG'}) for rel in decoded_labels]
+            pred_triplets = [extract_triplets_typed(rel, {'<loc>': 'LOC', '<misc>': 'MISC', '<per>': 'PER', '<num>': 'NUM', '<time>': 'TIME', '<org>': 'ORG'}) for rel in decoded_preds]
+            gold_triplets = [extract_triplets_typed(rel, {'<loc>': 'LOC', '<misc>': 'MISC', '<per>': 'PER', '<num>': 'NUM', '<time>': 'TIME', '<org>': 'ORG'}) for rel in decoded_labels]
+            return pred_triplets, gold_triplets
+        elif self.hparams.dataset_name.split('/')[-1] == 'carb.py':
+            pred_tokenss = [rel.strip().replace("<s>", "").replace("<pad>", "").replace("</s>", "").split() for rel in decoded_preds]
+            gold_tokenss = [rel.strip().replace("<s>", "").replace("<pad>", "").replace("</s>", "").split() for rel in decoded_labels]
+            return pred_tokenss, gold_tokenss
         return [extract_triplets(rel) for rel in decoded_preds], [extract_triplets(rel) for rel in decoded_labels]
 
     def generate_samples(self,
@@ -297,8 +304,11 @@ class BasePLModule(pl.LightningModule):
         if self.hparams.prediction_loss_only:
             self.log('val_loss', forward_output['loss'])
             return
-
-        forward_output['logits'] = generated_tokens.detach() if self.hparams.predict_with_generate else forward_output['logits'].detach()
+        
+        if self.hparams.predict_with_generate:
+            forward_output['logits'] = generated_tokens.detach()
+        else:
+            forward_output['logits'] = forward_output['logits'].detach()
 
         if labels.shape[-1] < gen_kwargs["max_length"]:
             forward_output['labels'] = self._pad_tensors_to_max_len(labels, gen_kwargs["max_length"])
@@ -306,9 +316,12 @@ class BasePLModule(pl.LightningModule):
             forward_output['labels'] = labels
 
         if self.hparams.predict_with_generate:
-            metrics = self.compute_metrics(forward_output['logits'].detach().cpu(), forward_output['labels'].detach().cpu())
+            output_logits = forward_output['logits'].detach().cpu()
+            output_labels = forward_output['labels'].detach().cpu()
+            metrics = self.compute_metrics(output_logits, output_labels)
         else:
             metrics = {}
+
         metrics['val_loss'] = forward_output['loss']
         for key in sorted(metrics.keys()):
             self.log(key, metrics[key])
@@ -402,8 +415,15 @@ class BasePLModule(pl.LightningModule):
             elif self.hparams.dataset_name.split('/')[-1] == 'docred_typed.py':
                 relations_docred = {"P6": "head of government", "P17": "country", "P19": "place of birth", "P20": "place of death", "P22": "father", "P25": "mother", "P26": "spouse", "P27": "country of citizenship", "P30": "continent", "P31": "instance of", "P35": "head of state", "P36": "capital", "P37": "official language", "P39": "position held", "P40": "child", "P50": "author", "P54": "member of sports team", "P57": "director", "P58": "screenwriter", "P69": "educated at", "P86": "composer", "P102": "member of political party", "P108": "employer", "P112": "founded by", "P118": "league", "P123": "publisher", "P127": "owned by", "P131": "located in the administrative territorial entity", "P136": "genre", "P137": "operator", "P140": "religion", "P150": "contains administrative territorial entity", "P155": "follows", "P156": "followed by", "P159": "headquarters location", "P161": "cast member", "P162": "producer", "P166": "award received", "P170": "creator", "P171": "parent taxon", "P172": "ethnic group", "P175": "performer", "P176": "manufacturer", "P178": "developer", "P179": "series", "P190": "sister city", "P194": "legislative body", "P205": "basin country", "P206": "located in or next to body of water", "P241": "military branch", "P264": "record label", "P272": "production company", "P276": "location", "P279": "subclass of", "P355": "subsidiary", "P361": "part of", "P364": "original language of work", "P400": "platform", "P403": "mouth of the watercourse", "P449": "original network", "P463": "member of", "P488": "chairperson", "P495": "country of origin", "P527": "has part", "P551": "residence", "P569": "date of birth", "P570": "date of death", "P571": "inception", "P576": "dissolved, abolished or demolished", "P577": "publication date", "P580": "start time", "P582": "end time", "P585": "point in time", "P607": "conflict", "P674": "characters", "P676": "lyrics by", "P706": "located on terrain feature", "P710": "participant", "P737": "influenced by", "P740": "location of formation", "P749": "parent organization", "P800": "notable work", "P807": "separated from", "P840": "narrative location", "P937": "work location", "P1001": "applies to jurisdiction", "P1056": "product or material produced", "P1198": "unemployment rate", "P1336": "territory claimed by", "P1344": "participant of", "P1365": "replaces", "P1366": "replaced by", "P1376": "capital of", "P1412": "languages spoken, written or signed", "P1441": "present in work", "P3373": "sibling"}
                 scores, precision, recall, f1 = re_score([item for pred in output for item in pred['predictions']], [item for pred in output for item in pred['labels']], list(relations_docred.values()), "strict")            
-            else:
+            elif self.hparams.dataset_name.split('/')[-1] == 'conll04_typed.py':
                 scores, precision, recall, f1 = re_score([item for pred in output for item in pred['predictions']], [item for pred in output for item in pred['labels']], ['killed by', 'residence', 'location', 'headquarters location', 'employer'])
+            elif self.hparams.dataset_name.split('/')[-1] == 'carb.py':
+                preds = [' '.join(item) for pred in output for item in pred['predictions']]
+                golds = [' '.join(item) for pred in output for item in pred['labels']]
+                accu = accuracy_score(golds, preds)
+                precision = accu
+                recall = accu
+                f1 = accu
             self.log('val_prec_micro', precision)
             self.log('val_recall_micro', recall)
             self.log('val_F1_micro', f1)
@@ -436,14 +456,26 @@ class BasePLModule(pl.LightningModule):
             preds = [item for pred in output for item in pred['predictions']]
             gold = [item for pred in output for item in pred['labels']]
             keys = []
-            with open(self.hparams.test_file) as json_file:
-                d_test = json.load(json_file)
-                for id_, row in enumerate(d_test):
-                    keys.append(' '.join(row['tokens']))
-            with open('preds.jsonl','a') as f:
-                self.log('preds.jsonl', os.sep.join(os.path.realpath(f.name).split(os.sep)[-3:]))
-                for key, prd, label in zip(keys, preds, gold):
-                    f.write(f'{key} \t {self._pprels(prd)} \t {self._pprels(label)}\n')
+            if not 'carb' in self.hparams.dataset_name.split('/')[-1]:
+                with open(self.hparams.test_file) as json_file:
+                    d_test = json.load(json_file)
+                    for id_, row in enumerate(d_test):
+                        keys.append(' '.join(row['tokens']))
+            else:
+                with open(self.hparams.test_file) as csv_file:
+                    d_test = csv.load(csv_file)
+                    for id_, row in enumerate(d_test):
+                        keys.append(row[0])
+            if not 'carb' in self.hparams.dataset_name.split('/')[-1]:
+                with open('preds.jsonl','a') as f:
+                    self.log('preds.jsonl', os.sep.join(os.path.realpath(f.name).split(os.sep)[-3:]))
+                    for key, prd, label in zip(keys, preds, gold):
+                        f.write(f'{key} \t {self._pprels(prd)} \t {self._pprels(label)}\n')
+            else:
+                with open('preds.jsonl','a') as f:
+                    self.log('preds.jsonl', os.sep.join(os.path.realpath(f.name).split(os.sep)[-3:]))
+                    for key, prd, label in zip(keys, preds, gold):
+                        f.write(f'{key} \t {prd} \t {label}\n')
 
             if self.hparams.dataset_name.split('/')[-1] == 'conll04_typed.py':
                 scores, precision, recall, f1 = re_score(preds, gold, ['killed by', 'residence', 'location', 'headquarters location', 'employer'], "strict")
@@ -453,7 +485,9 @@ class BasePLModule(pl.LightningModule):
                 scores, precision, recall, f1 = re_score(preds, gold, list(relations_nyt.values()), "strict")
             elif self.hparams.dataset_name.split('/')[-1] == 'docred_typed.py':
                 relations_docred = {"P6": "head of government", "P17": "country", "P19": "place of birth", "P20": "place of death", "P22": "father", "P25": "mother", "P26": "spouse", "P27": "country of citizenship", "P30": "continent", "P31": "instance of", "P35": "head of state", "P36": "capital", "P37": "official language", "P39": "position held", "P40": "child", "P50": "author", "P54": "member of sports team", "P57": "director", "P58": "screenwriter", "P69": "educated at", "P86": "composer", "P102": "member of political party", "P108": "employer", "P112": "founded by", "P118": "league", "P123": "publisher", "P127": "owned by", "P131": "located in the administrative territorial entity", "P136": "genre", "P137": "operator", "P140": "religion", "P150": "contains administrative territorial entity", "P155": "follows", "P156": "followed by", "P159": "headquarters location", "P161": "cast member", "P162": "producer", "P166": "award received", "P170": "creator", "P171": "parent taxon", "P172": "ethnic group", "P175": "performer", "P176": "manufacturer", "P178": "developer", "P179": "series", "P190": "sister city", "P194": "legislative body", "P205": "basin country", "P206": "located in or next to body of water", "P241": "military branch", "P264": "record label", "P272": "production company", "P276": "location", "P279": "subclass of", "P355": "subsidiary", "P361": "part of", "P364": "original language of work", "P400": "platform", "P403": "mouth of the watercourse", "P449": "original network", "P463": "member of", "P488": "chairperson", "P495": "country of origin", "P527": "has part", "P551": "residence", "P569": "date of birth", "P570": "date of death", "P571": "inception", "P576": "dissolved, abolished or demolished", "P577": "publication date", "P580": "start time", "P582": "end time", "P585": "point in time", "P607": "conflict", "P674": "characters", "P676": "lyrics by", "P706": "located on terrain feature", "P710": "participant", "P737": "influenced by", "P740": "location of formation", "P749": "parent organization", "P800": "notable work", "P807": "separated from", "P840": "narrative location", "P937": "work location", "P1001": "applies to jurisdiction", "P1056": "product or material produced", "P1198": "unemployment rate", "P1336": "territory claimed by", "P1344": "participant of", "P1365": "replaces", "P1366": "replaced by", "P1376": "capital of", "P1412": "languages spoken, written or signed", "P1441": "present in work", "P3373": "sibling"}
-                scores, precision, recall, f1 = re_score(preds, gold, list(relations_docred.values()), "strict")            
+                scores, precision, recall, f1 = re_score(preds, gold, list(relations_docred.values()), "strict")
+            elif self.hparams.dataset_name.split('/')[-1] == 'carb.py':
+                precision, recall, f1 = 0, 0, 0
             else:
                 scores, precision, recall, f1 = re_score(preds, gold, ['killed by', 'residence', 'location', 'headquarters location', 'employer'])
             self.log('test_prec_micro', precision)
@@ -586,4 +620,3 @@ class BasePLModule(pl.LightningModule):
         result["gen_len"] = np.mean(prediction_lens)
         result = {k: round(v, 4) for k, v in result.items()}
         return result
-

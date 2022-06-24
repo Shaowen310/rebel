@@ -258,6 +258,8 @@ def re_score(pred_relations, gt_relations, relation_types, mode="boundaries"):
     return scores, precision, recall, f1
 
 
+
+
 if __name__ == "__main__":
     # Parse the arguments from stdin
     args = parse_arguments()

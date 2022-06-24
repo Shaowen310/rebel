@@ -91,6 +91,8 @@ def train(conf: omegaconf.DictConfig) -> None:
         tokenizer.add_tokens(['<loc>', '<org>', '<per>'], special_tokens = True)
     if conf.dataset_name.split('/')[-1] == 'docred_typed.py':
         tokenizer.add_tokens(['<loc>', '<misc>', '<per>', '<num>', '<time>', '<org>'], special_tokens = True)
+    if conf.dataset_name.split('/')[-1] == 'carb.py':
+        tokenizer.add_tokens(['<rel>', '<arg0>', '<arg1>', '<arg2>', '<arg3>'])
 
     model = AutoModelForSeq2SeqLM.from_pretrained(
         conf.model_name_or_path,
@@ -161,7 +163,7 @@ def train(conf: omegaconf.DictConfig) -> None:
         pl_module.model.save_pretrained(model_save_dir)
         pl_module.tokenizer.save_pretrained(model_save_dir)
 
-@hydra.main(config_path='../conf', config_name='nyt')
+@hydra.main(config_path='../conf', config_name='carb')
 def main(conf: omegaconf.DictConfig):
     project_root = os.getenv('REBEL_DIR')
     if is_relative_path(conf.dataset_name):

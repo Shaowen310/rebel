@@ -1,8 +1,8 @@
 # @package _global_
 
 # optimization
-train_batch_size: 4
-eval_batch_size: 4
+train_batch_size: 16
+eval_batch_size: 16
 gradient_acc_steps: 1
 gradient_clip_value: 10.0
 max_steps: 100000

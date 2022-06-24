@@ -1,5 +1,6 @@
 
 import math
+import re
 from typing import Callable, Dict, Iterable, List, Tuple, Union
 
 import numpy as np
@@ -262,4 +263,47 @@ def extract_triplets_typed(text, mapping_types= {'<peop>': 'Peop', '<org>': 'Org
                 relation += ' ' + token
     if subject != '' and relation != '' and object_ != '' and object_type != '' and subject_type != '':
         triplets.append({'head': subject.strip(), 'head_type': subject_type, 'type': relation.strip(),'tail': object_.strip(), 'tail_type': object_type})
+    return triplets
+
+def extract_open_triplets(text):
+    TRIPLET_TOKEN = '<triplet>'
+    REGEX_ARG = r'<arg\d>'
+    
+    text = text.strip()
+    triplets = []
+    relation, arg, args = '', '', []
+    status = 'x'
+
+    tokens = text.replace("<s>", "").replace("<pad>", "").replace("</s>", "").split()
+    for token in tokens:
+        if token == TRIPLET_TOKEN:
+            status = 'r'
+            if relation != '':
+                triplet = {
+                    'type': relation.strip(),
+                    'args': args
+                }
+                triplets.append(triplet)
+            relation = ''
+            args = []
+        elif re.match(REGEX_ARG, token):
+            status = 'as'
+        else:
+            if status == 'r':
+                relation += f' {token}'
+            elif status == 'as':
+                if arg != '':
+                    args.append(arg)
+                    arg = ''
+                arg += f' {token}'
+                status = 'am'
+            elif status == 'am':
+                arg += f' {token}'
+
+    if relation != '':
+        triplet = {
+            'type': relation.strip(),
+            'args': args
+        }
+        triplets.append(triplet)
     return triplets
