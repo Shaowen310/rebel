@@ -96,8 +96,6 @@ class Trilinear(nn.Module):
     def reset_parameters(self) -> None:
         bound = 1 / math.sqrt(self.weight.size(1))
         nn.init.uniform_(self.weight, -bound, bound)
-        if self.bias is not None:
-            init.uniform_(self.bias, -bound, bound)
 
     def forward(self, input1: Tensor, input2: Tensor, input3: Tensor) -> Tensor:
         if self.bias is not None:

@@ -1,18 +1,14 @@
-from typing import Any, Union, List, Optional
+from typing import Union, List
 
 from omegaconf import DictConfig
 
-import torch
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from datasets import load_dataset, set_caching_enabled
 from transformers import (
-    AutoConfig,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
-    DataCollatorForSeq2Seq,
-    default_data_collator,
-    set_seed,
+    DataCollatorForSeq2Seq
 )
 
 class BasePLDataModule(pl.LightningDataModule):
@@ -69,18 +65,13 @@ class BasePLDataModule(pl.LightningDataModule):
         set_caching_enabled(True)
         self.prefix = conf.source_prefix if conf.source_prefix is not None else ""
         self.column_names = self.datasets["train"].column_names
-        # self.source_lang, self.target_lang, self.text_column, self.summary_column = None, None, None, None
         self.text_column = conf.text_column
         self.summary_column = conf.target_column
         self.max_target_length = conf.max_target_length
-        self.padding = "max_length" if conf.pad_to_max_length else False
 
         # Data collator
         label_pad_token_id = -100 if conf.ignore_pad_token_for_loss else self.tokenizer.pad_token_id
-        if conf.pad_to_max_length:
-            self.data_collator = default_data_collator
-        else:
-            self.data_collator = DataCollatorForSeq2Seq(self.tokenizer, self.model, label_pad_token_id=label_pad_token_id)
+        self.data_collator = DataCollatorForSeq2Seq(self.tokenizer, self.model, label_pad_token_id=label_pad_token_id)
 
     def prepare_data(self, *args, **kwargs):
         self.train_dataset = self.datasets["train"]
@@ -98,7 +89,6 @@ class BasePLDataModule(pl.LightningDataModule):
         )
 
         if self.conf.do_eval:
-            max_target_length = self.conf.val_max_target_length
             if "validation" not in self.datasets:
                 raise ValueError("--do_eval requires a validation dataset")
             self.eval_dataset = self.datasets["validation"]
@@ -114,7 +104,6 @@ class BasePLDataModule(pl.LightningDataModule):
             )
 
         if self.conf.do_predict:
-            max_target_length = self.conf.val_max_target_length
             if "test" not in self.datasets:
                 raise ValueError("--do_predict requires a test dataset")
             self.test_dataset = self.datasets["test"]
@@ -133,7 +122,6 @@ class BasePLDataModule(pl.LightningDataModule):
         return DataLoader(
             self.train_dataset,
             batch_size=self.conf.train_batch_size,
-            # sampler=train_sampler,
             collate_fn=self.data_collator,
             drop_last=self.conf.dataloader_drop_last,
             num_workers=self.conf.dataloader_num_workers,
@@ -145,7 +133,6 @@ class BasePLDataModule(pl.LightningDataModule):
         return DataLoader(
             self.eval_dataset,
             batch_size=self.conf.eval_batch_size,
-            # sampler=train_sampler,
             collate_fn=self.data_collator,
             drop_last=self.conf.dataloader_drop_last,
             num_workers=self.conf.dataloader_num_workers,
@@ -156,34 +143,20 @@ class BasePLDataModule(pl.LightningDataModule):
         return DataLoader(
             self.test_dataset,
             batch_size=self.conf.eval_batch_size,
-            # sampler=train_sampler,
             collate_fn=self.data_collator,
             drop_last=self.conf.dataloader_drop_last,
             num_workers=self.conf.dataloader_num_workers,
             pin_memory=self.conf.dataloader_pin_memory,
         )
 
-    # def transfer_batch_to_device(self, batch: Any, device: torch.device) -> Any:
-    #     raise NotImplementedError
-
     def preprocess_function(self, examples):
         inputs = examples[self.text_column]
         targets = examples[self.summary_column]
-        inputs = [self.prefix + inp for inp in inputs]
-        model_inputs = self.tokenizer(inputs, max_length=self.conf.max_source_length, padding=self.padding, truncation=True)
+        model_inputs = self.tokenizer(inputs, max_length=self.conf.max_source_length, truncation=True)
 
         # Setup the tokenizer for targets
         with self.tokenizer.as_target_tokenizer():
-            labels = self.tokenizer(targets, max_length=self.max_target_length, padding=self.padding, truncation=True)
+            labels = self.tokenizer(targets, max_length=self.max_target_length, truncation=True)
 
-        # If we are padding here, replace all tokenizer.pad_token_id in the labels by -100 when we want to ignore
-        # padding in the loss.
-        if self.padding == "max_length" and self.conf.ignore_pad_token_for_loss:
-            labels["input_ids"] = [
-                [(l if l != self.tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
-            ]
-        # model_inputs["decoder_input_ids"] = labels["input_ids"]
-        # model_inputs["decoder_attention_mask"] = labels["attention_mask"]
-        # model_inputs["labels"] = shift_tokens_left(labels["input_ids"], self.tokenizer.pad_token_id)
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs

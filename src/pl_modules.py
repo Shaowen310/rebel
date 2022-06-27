@@ -124,7 +124,7 @@ class BasePLModule(pl.LightningModule):
                 # force training to ignore pad token
                 outputs = self.model(**inputs, use_cache=False, return_dict = True, output_hidden_states=True)
                 logits = outputs['logits']
-                loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))#, ignore_index=self.config.pad_token_id)
+                loss = self.loss_fn(logits.view(-1, logits.shape[-1]), labels.view(-1))
             else:
                 # compute usual loss via models
                 outputs = self.model(**inputs, labels=labels, use_cache=False, return_dict = True, output_hidden_states=True)
@@ -137,7 +137,7 @@ class BasePLModule(pl.LightningModule):
             lprobs = torch.nn.functional.log_softmax(logits, dim=-1)
             # labels = torch.where(labels != -100, labels, self.config.pad_token_id)
             labels.masked_fill_(labels == -100, self.config.pad_token_id)
-            loss, _ = self.loss_fn(lprobs, labels, self.hparams.label_smoothing, ignore_index=self.config.pad_token_id)
+            loss, _ = self.loss_fn(lprobs, labels, self.hparams.label_smoothing)
         output_dict = {'loss': loss, 'logits': logits}
         # return loss, logits
         return output_dict
@@ -145,7 +145,7 @@ class BasePLModule(pl.LightningModule):
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
         labels = batch["labels"]
         batch["decoder_input_ids"] = torch.where(labels != -100, labels, self.config.pad_token_id)
-        labels = shift_tokens_left(labels, -100)
+        # labels = shift_tokens_left(labels, -100)
         forward_output = self.forward(batch, labels)
         self.log('loss', forward_output['loss'])
         if 'loss_aux' in forward_output:
@@ -168,10 +168,7 @@ class BasePLModule(pl.LightningModule):
         padded_tensor[:, : tensor.shape[-1]] = tensor
         return padded_tensor
 
-    def generate_triples(self,
-        batch,
-        labels,
-    ) -> None:
+    def generate_triples(self, batch, labels):
         gen_kwargs = {
             "max_length": self.hparams.val_max_target_length
             if self.hparams.val_max_target_length is not None
@@ -205,15 +202,7 @@ class BasePLModule(pl.LightningModule):
             return pred_tokenss, gold_tokenss
         return [extract_triplets(rel) for rel in decoded_preds], [extract_triplets(rel) for rel in decoded_labels]
 
-    def generate_samples(self,
-        # model,
-        # tokenizer,
-        batch,
-        labels,
-    ) -> None:
-        # labels = batch["labels"]
-        # pick the last batch and logits
-        # x, y = batch
+    def generate_samples(self, batch, labels):
         gen_kwargs = {
             "max_length": self.hparams.val_max_target_length
             if self.hparams.val_max_target_length is not None
@@ -244,12 +233,7 @@ class BasePLModule(pl.LightningModule):
 
         return [rel.strip() for rel in decoded_preds]
 
-    def forward_samples(self,
-        # model,
-        # tokenizer,
-        batch,
-        labels,
-    ) -> None:
+    def forward_samples(self, batch, labels):
         relation_start = labels == 50265
         relation_start = torch.roll(relation_start, 2, 1)
         labels = torch.where(torch.cumsum(relation_start, dim=1) == 1, self.tokenizer.pad_token_id, labels)
@@ -294,7 +278,7 @@ class BasePLModule(pl.LightningModule):
 
         labels = batch["labels"]
         batch["decoder_input_ids"] = torch.where(labels != -100, labels, self.config.pad_token_id)
-        labels = shift_tokens_left(labels, -100)
+        # labels = shift_tokens_left(labels, -100)
         with torch.no_grad():
             # compute loss on predict data
             forward_output = self.forward(batch, labels)
@@ -353,7 +337,7 @@ class BasePLModule(pl.LightningModule):
 
         labels = batch["labels"]
         batch["decoder_input_ids"] = torch.where(labels != -100, labels, self.config.pad_token_id)
-        labels = shift_tokens_left(labels, -100)
+        # labels = shift_tokens_left(labels, -100)
         with torch.no_grad():
             # compute loss on predict data
             forward_output = self.forward(batch, labels)
@@ -463,9 +447,9 @@ class BasePLModule(pl.LightningModule):
                         keys.append(' '.join(row['tokens']))
             else:
                 with open(self.hparams.test_file) as csv_file:
-                    d_test = csv.load(csv_file)
+                    d_test = csv.reader(csv_file, delimiter='\t')
                     for id_, row in enumerate(d_test):
-                        keys.append(row[0])
+                        keys.append(id_)
             if not 'carb' in self.hparams.dataset_name.split('/')[-1]:
                 with open('preds.jsonl','a') as f:
                     self.log('preds.jsonl', os.sep.join(os.path.realpath(f.name).split(os.sep)[-3:]))
